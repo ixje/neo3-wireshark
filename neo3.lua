@@ -93,14 +93,12 @@ local function read_var_int(tvbuf, start_idx, max)
     -- max is max bytes to read
     -- return (payload length, variable length byte count)
     local fb = tvbuf(start_idx, 1):uint()
-    dprint("fb: "..fb.." max "..max.." reported_length_remaining: "..tvbuf:reported_length_remaining().." start_idx: "..start_idx)
     local value = nil
     local offset = 1
 
     if fb == 0 then
         value = fb
     elseif fb == 0xfd then
-        dprint("read_var fd")
         -- test for enough data remaining to take out a uint16
         if tvbuf:reported_length_remaining()-start_idx < 3 then
             return nil, nil
@@ -109,7 +107,6 @@ local function read_var_int(tvbuf, start_idx, max)
         value = tvbuf(start_idx+offset, 2):le_uint()
         offset = offset + 2
     elseif fb == 0xfe then
-        dprint("read_var fe")
         -- test for enough data remaining to take out a uint32
         if tvbuf:reported_length_remaining()-start_idx < 5 then
             return nil, nil
@@ -117,7 +114,6 @@ local function read_var_int(tvbuf, start_idx, max)
         value = tvbuf(start_idx+offset, 4):le_uint()
         offset = offset + 4
     elseif fb == 0xff then
-        dprint("read_var ff")
         -- test for enough data remaining to take out a uint64
         if tvbuf:reported_length_remaining()-start_idx < 9 then
             return nil, nil
@@ -125,12 +121,10 @@ local function read_var_int(tvbuf, start_idx, max)
         value = tvbuf(start_idx+offset, 8):le_uint64()
         offset = offset + 8
     else
-        dprint("read_var else"..fb)
         value = fb
     end
 
     if value > max then
-        dprint("value:"..value.." > max: "..max)
         return nil, nil
     end
     return value, offset
@@ -303,9 +297,8 @@ local NEO_MSG_HDR_LEN = 3
 
 function get_length(tvbuf, pktinfo, offset)
     -- must return number representing full length of the PDU, if we can't then return 0 indicating we need more data
-    
+
     -- offset is offset to the start of the message (aka msg.config)
-    dprint("offset:"..offset)
 
     -- bytes remaining to create a message off
     local msglen = tvbuf:len() - offset
@@ -313,7 +306,6 @@ function get_length(tvbuf, pktinfo, offset)
     -- check if capture was only capturing partial packet size
     if msglen ~= tvbuf:reported_length_remaining(offset) then
         -- captured packets are being sliced/cut-off, so don't try to desegment/reassemble
-        dprint("Captured packet was shorter than original, can't reassemble")
         return 0
     end
 
@@ -324,10 +316,8 @@ function get_length(tvbuf, pktinfo, offset)
     -- we can at least attempt to read the variable length byte
     local value, len_byte_count = read_var_int(tvbuf, offset+2, msglen-NEO_MSG_HDR_LEN)
     if value == nil then
-        dprint("get_length(): Not enough data to determine length")
         return -DESEGMENT_ONE_MORE_SEGMENT
     else
-        dprint("get_length(): "..value.." "..len_byte_count)
         return value, len_byte_count
     end
 end
@@ -344,8 +334,6 @@ function dissectNEO(tvbuf, pktinfo, root, offset)
     if length_val < 0 then
         return length_val
     end
-
-    dprint("new offset:"..new_offset)
 
     pktinfo.cols.protocol:set("NEO3")
 
@@ -379,7 +367,6 @@ function dissectNEO(tvbuf, pktinfo, root, offset)
 
     offset = offset + new_offset -- set offset to data[0] of payload 
     if message_type == "VERSION" then
-        dprint("data offset going into version: "..offset)
         dissect_version(tvbuf, pktinfo, tree, offset)
     elseif message_type == "GETBLOCKS" then
         dissect_getblocks(tvbuf, pktinfo, tree, offset)
@@ -405,11 +392,9 @@ function neo_protocol.dissector(tvbuf, pktinfo, root)
     local offset = 0
     local pktlen = tvbuf:len()
     local bytes_consumed = 0
-    dprint("pktlen: "..pktlen)
+
     while bytes_consumed < pktlen do
-        dprint("frame number: "..pktinfo.number)
         local result = dissectNEO(tvbuf, pktinfo, root, bytes_consumed)
-        dprint("Result after dissectNEO: "..result)
         if result > 0 then
             bytes_consumed = bytes_consumed + result
         elseif result == 0 then
